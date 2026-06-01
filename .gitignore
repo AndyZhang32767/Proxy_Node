@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# sing-box bundled binary (auto-downloaded on first run)
+bin/
+
+# User data (generated at runtime)
+*.db
+nodes.json
+config.json
+sb-out.log
+
+# Virtual environment
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProxyNet - 异地组网</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --border: #2a2d3a;
+  --text: #e1e4eb;
+  --muted: #6b7280;
+  --primary: #6366f1;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --cyan: #06b6d4;
+  --magenta: #a855f7;
+  --radius: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+/* Header */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+header h1 { font-size:1.2rem; }
+header h1 span { color: var(--primary); }
+.engine-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.engine-badge.running { background: #166534; color: var(--success); }
+.engine-badge.stopped { background: #1f2937; color: var(--muted); }
+/* Layout */
+.main { display: flex; height: calc(100vh - 56px); }
+.panel-left { width: 60%; display: flex; flex-direction: column; border-right:1px solid var(--border); }
+.panel-right { width: 40%; display: flex; flex-direction: column; }
+/* Toolbar */
+.toolbar {
+  display: flex; gap:8px; padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+/* Buttons */
+.btn {
+  padding: 6px 14px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); cursor: pointer;
+  font-size: 0.85rem; transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--primary); background: #222639; }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn.primary:hover { background: #5558e6; }
+.btn.success { background: #166534; border-color: #15803d; color: var(--success); }
+.btn.success:hover { background: #1a7f3e; }
+.btn.danger { background: #7f1d1d; border-color: #991b1b; color: var(--danger); }
+.btn.danger:hover { background: #991b1b; }
+/* Table */
+.table-wrap { flex:1; overflow:auto; }
+table { width:100%; border-collapse: collapse; }
+th { position:sticky; top:0; background: var(--surface); text-align:left;
+     padding: 10px 12px; font-size:0.8rem; color: var(--muted);
+     text-transform: uppercase; letter-spacing: 0.5px;
+     border-bottom: 2px solid var(--border); z-index:1; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size:0.88rem; }
+tr.node-row { cursor: pointer; transition: background 0.1s; }
+tr.node-row:hover { background: #1e2230; }
+tr.node-row.selected { background: #1e2347; border-left: 3px solid var(--primary); }
+.status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+.status-dot.online { background: var(--success); }
+.status-dot.offline { background: var(--danger); }
+.status-dot.testing { background: var(--warning); }
+.status-dot.unknown { background: var(--muted); }
+.type-tag {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+}
+.type-tag.ss { background:#1e3a5f; color:#60a5fa; }
+.type-tag.vmess { background:#3b1f5e; color:#c084fc; }
+.type-tag.trojan { background:#5f3b1e; color:#f59e0b; }
+.type-tag.vless { background:#1e5f3b; color:#34d399; }
+/* Right panels */
+.section {
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.section-title { font-size:0.85rem; font-weight:600; color:var(--muted);
+                  text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px; }
+.detail-grid { display:grid; grid-template-columns: auto 1fr; gap:6px 16px; font-size:0.85rem; }
+.detail-grid .k { color: var(--muted); }
+.log-box {
+  flex:1; overflow:auto; background: #0a0b10; padding:10px 14px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 0.8rem; line-height: 1.6; min-height: 150px;
+}
+.log-box .line { white-space:pre-wrap; word-break:break-all; }
+.log-box .line.info { color: #93c5fd; }
+.log-box .line.warn { color: var(--warning); }
+.log-box .line.error { color: var(--danger); }
+.log-box .line.ok { color: var(--success); }
+/* Modal */
+.modal-overlay {
+  display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+  background: rgba(0,0,0,0.6); z-index:100; justify-content:center; align-items:center;
+}
+.modal-overlay.active { display:flex; }
+.modal {
+  background: var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:24px; width:560px; max-height:80vh; overflow:auto;
+}
+.modal h2 { margin-bottom:16px; font-size:1.1rem; }
+.modal textarea { width:100%; height:120px; background:#0a0b10; color:var(--text);
+                  border:1px solid var(--border); border-radius:var(--radius);
+                  padding:10px; font-family:monospace; font-size:0.85rem; resize:vertical; }
+.form-group { margin-bottom:12px; }
+.form-group label { display:block; font-size:0.8rem; color:var(--muted); margin-bottom:4px; }
+.form-group input, .form-group select {
+  width:100%; padding:8px 10px; background:#0a0b10; color:var(--text);
+  border:1px solid var(--border); border-radius:var(--radius); font-size:0.85rem;
+}
+.form-group input:focus, .form-group select:focus, textarea:focus {
+  outline:none; border-color:var(--primary);
+}
+.form-row { display:flex; gap:12px; }
+.form-row .form-group { flex:1; }
+.modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
+.toggle-row { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+.toggle-row span { min-width:80px; font-size:0.85rem; color:var(--muted); }
+.switch { position:relative; display:inline-block; width:44px; height:24px; }
+.switch input { opacity:0; width:0; height:0; }
+.slider { position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0;
+          background:#374151; border-radius:24px; transition:.2s; }
+.slider::before { content:''; position:absolute; height:18px; width:18px;
+                  left:3px; bottom:3px; background:white; border-radius:50%; transition:.2s; }
+input:checked + .slider { background: var(--primary); }
+input:checked + .slider::before { transform: translateX(20px); }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <h1>🔗 <span>ProxyNet</span> 异地组网</h1>
+  <div style="display:flex; align-items:center; gap:12px;">
+    <span id="node-count" style="font-size:0.85rem;color:var(--muted);">0 nodes</span>
+    <span id="engine-badge" class="engine-badge stopped">Stopped</span>
+  </div>
+</header>
+
+<!-- Main layout -->
+<div class="main">
+  <!-- Left: node table -->
+  <div class="panel-left">
+    <div class="toolbar">
+      <button class="btn primary" onclick="showImportModal()">📥 Import</button>
+      <button class="btn" onclick="editSelectedNode()">✏️ Edit</button>
+      <button class="btn danger" onclick="deleteSelectedNode()">🗑 Delete</button>
+      <button class="btn" onclick="testSelectedNode()">⚡ Test</button>
+      <button class="btn" onclick="testAllNodes()">⚡ Test All</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Status</th><th>Name</th><th>Type</th><th>Host</th><th>Latency</th>
+        </tr></thead>
+        <tbody id="node-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Right: details + engine + logs -->
+  <div class="panel-right">
+    <!-- Details -->
+    <div class="section">
+      <div class="section-title">📋 Node Details</div>
+      <div id="node-detail" class="detail-grid">
+        <span class="k">Select a node</span><span></span>
+      </div>
+    </div>
+
+    <!-- Engine controls -->
+    <div class="section">
+      <div class="section-title">⚙️ Engine Control</div>
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <button class="btn success" onclick="startEngine()">▶ Start</button>
+        <button class="btn danger" onclick="stopEngine()">⏹ Stop</button>
+        <button class="btn" onclick="exportConfig()">📤 Export Config</button>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" onclick="showRoutingModal()">🔀 Split Routing</button>
+        <button class="btn" onclick="clearLogs()">🗑 Clear Logs</button>
+      </div>
+    </div>
+
+    <!-- Log viewer -->
+    <div class="log-box" id="log-box">
+      <div class="line info">ProxyNet ready. Import nodes and start engine.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal-overlay" id="import-modal">
+  <div class="modal">
+    <h2>📥 Import Proxy Nodes</h2>
+    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:12px;">
+      Paste share links (ss://, vmess://, trojan://, vless://) — one per line</p>
+    <textarea id="import-links" placeholder="Paste share links here..."></textarea>
+    <div class="modal-actions">
+      <button class="btn" onclick="hideImportModal()">Cancel</button>
+      <button class="btn primary" onclick="doImport()">Import</button>
+    </div>
+    <div id="import-status" style="margin-top:8px;font-size:0.85rem;"></div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <h2 id="edit-title">✏️ Edit Node</h2>
+    <div class="form-row">
+      <div class="form-group"><label>Name</label><input id="e-name" placeholder="Node name"></div>
+      <div class="form-group"><label>Type</label>
+        <select id="e-type">
+          <option value="vmess">VMess</option><option value="vless">VLESS</option>
+          <option value="trojan">Trojan</option><option value="ss">Shadowsocks</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Host</label><input id="e-host" placeholder="Server address"></div>
+      <div class="form-group"><label>Port</label><input id="e-port" type="number" placeholder="443"></div>
+    </div>
+    <div class="form-group"><label>UUID / Password</label><input id="e-auth" placeholder="UUID or password"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Network</label>
+        <select id="e-network">
+          <option value="tcp">TCP</option><option value="ws">WebSocket</option>
+          <option value="grpc">gRPC</option><option value="h2">HTTP/2</option><option value="quic">QUIC</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>TLS</label>
+        <div class="toggle-row"><span></span>
+          <label class="switch"><input type="checkbox" id="e-tls"><span class="slider"></span></label>
+        </div>
+      </div>
+    </div>
+    <input type="hidden" id="e-id">
+    <div class="modal-actions">
+      <button class="btn" onclick="hideEditModal()">Cancel</button>
+      <button class="btn primary" onclick="doSaveNode()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Routing Modal -->
+<div class="modal-overlay" id="routing-modal">
+  <div class="modal">
+    <h2>🔀 Split Routing Configuration</h2>
+    <div class="form-group"><label>🏠 Private IP (10.x, 172.16.x, 192.168.x)</label>
+      <select id="r-private-mode">
+        <option value="local">Direct (no proxy)</option>
+        <option value="remote">Via remote node →</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Private IP Exit Node</label>
+      <select id="r-private-node"></select>
+    </div>
+    <div class="form-group"><label>🌐 Public IP (Internet)</label>
+      <select id="r-public-mode">
+        <option value="local">Direct (no proxy)</option>
+        <option value="remote">Via remote node →</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Public IP Exit Node</label>
+      <select id="r-public-node"></select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="hideRoutingModal()">Cancel</button>
+      <button class="btn primary" onclick="doSaveRouting()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────
+let nodes = [];
+let selectedNodeId = null;
+
+// ── API helpers ───────────────────────────────────────────────
+async function api(url, opts = {}) {
+  try {
+    const r = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
+    return r.ok ? r.json() : null;
+  } catch(e) { console.error(e); return null; }
+}
+
+// ── Refresh node table ────────────────────────────────────────
+async function refreshNodes() {
+  const data = await api('/api/nodes');
+  if (!data) return;
+  nodes = data;
+  selectedNodeId = null;
+  const tbody = document.getElementById('node-tbody');
+  tbody.innerHTML = nodes.map(n => {
+    const dot = `status-dot ${n.status}`;
+    const typeCls = `type-tag ${n.proxy_type}`;
+    const lat = n.latency_ms ? `${n.latency_ms}ms` : '---';
+    return `<tr class="node-row" data-id="${n.id}" onclick="selectNode('${n.id}')">
+      <td><span class="${dot}"></span></td>
+      <td>${esc(n.name || n.host)}</td>
+      <td><span class="${typeCls}">${n.proxy_type.toUpperCase()}</span></td>
+      <td>${esc(n.host)}:${n.port}</td>
+      <td>${lat}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('node-count').textContent = `${nodes.length} node${nodes.length!==1?'s':''}`;
+  showDetail(null);
+  updateRoutingNodeOptions();
+}
+
+function selectNode(id) {
+  selectedNodeId = id;
+  document.querySelectorAll('.node-row').forEach(r => r.classList.remove('selected'));
+  const row = document.querySelector(`[data-id="${id}"]`);
+  if (row) row.classList.add('selected');
+  const node = nodes.find(n => n.id === id);
+  showDetail(node);
+}
+
+function showDetail(node) {
+  const el = document.getElementById('node-detail');
+  if (!node) {
+    el.innerHTML = '<span class="k">Select a node</span><span></span>';
+    return;
+  }
+  const dot = `<span class="status-dot ${node.status}"></span>`;
+  el.innerHTML = `
+    <span class="k">Name</span><span>${esc(node.name)}</span>
+    <span class="k">Type</span><span><span class="type-tag ${node.proxy_type}">${node.proxy_type.toUpperCase()}</span></span>
+    <span class="k">Host</span><span>${esc(node.host)}:${node.port}</span>
+    <span class="k">Status</span><span>${dot} ${node.status}</span>
+    <span class="k">Latency</span><span>${node.latency_ms ? node.latency_ms+'ms' : 'N/A'}</span>
+    <span class="k">Network</span><span>${node.network} ${node.tls?'🔒':''}</span>
+    <span class="k">TLS</span><span>${node.tls?'Yes':'No'}</span>
+  `;
+}
+
+// ── Import ────────────────────────────────────────────────────
+function showImportModal() { document.getElementById('import-modal').classList.add('active'); }
+function hideImportModal() { document.getElementById('import-modal').classList.remove('active'); }
+
+async function doImport() {
+  const links = document.getElementById('import-links').value.trim();
+  if (!links) return;
+  const st = document.getElementById('import-status');
+  st.innerHTML = 'Importing...';
+  const r = await api('/api/nodes/import-batch', { method:'POST', body: JSON.stringify({links}) });
+  if (r) {
+    st.innerHTML = `✅ Imported ${r.imported} node(s). Total: ${r.total}`;
+    document.getElementById('import-links').value = '';
+    await refreshNodes();
+  } else {
+    st.innerHTML = '❌ Import failed';
+  }
+}
+
+// ── Edit ─────────────────────────────────────────────────────
+function editSelectedNode() {
+  if (!selectedNodeId) { alert('Select a node first'); return; }
+  const n = nodes.find(x => x.id === selectedNodeId);
+  if (!n) return;
+  document.getElementById('e-id').value = n.id;
+  document.getElementById('e-name').value = n.name;
+  document.getElementById('e-type').value = n.proxy_type;
+  document.getElementById('e-host').value = n.host;
+  document.getElementById('e-port').value = n.port;
+  document.getElementById('e-auth').value = n.uuid || n.password;
+  document.getElementById('e-network').value = n.network;
+  document.getElementById('e-tls').checked = n.tls;
+  document.getElementById('edit-modal').classList.add('active');
+}
+function hideEditModal() { document.getElementById('edit-modal').classList.remove('active'); }
+
+async function doSaveNode() {
+  const id = document.getElementById('e-id').value;
+  const data = {
+    name: document.getElementById('e-name').value,
+    proxy_type: document.getElementById('e-type').value,
+    host: document.getElementById('e-host').value,
+    port: parseInt(document.getElementById('e-port').value) || 443,
+    uuid: document.getElementById('e-auth').value,
+    password: document.getElementById('e-auth').value,
+    network: document.getElementById('e-network').value,
+    tls: document.getElementById('e-tls').checked,
+  };
+  await api(`/api/nodes/${id}`, { method:'PUT', body: JSON.stringify(data) });
+  hideEditModal();
+  await refreshNodes();
+}
+
+// ── Delete ───────────────────────────────────────────────────
+async function deleteSelectedNode() {
+  if (!selectedNodeId) { alert('Select a node first'); return; }
+  const n = nodes.find(x => x.id === selectedNodeId);
+  if (!confirm(`Delete "${n?.name || selectedNodeId}"?`)) return;
+  await api(`/api/nodes/${selectedNodeId}`, { method:'DELETE' });
+  await refreshNodes();
+}
+
+// ── Test ─────────────────────────────────────────────────────
+async function testSelectedNode() {
+  if (!selectedNodeId) { alert('Select a node first'); return; }
+  addLog(`Testing...`, 'info');
+  const r = await api(`/api/nodes/${selectedNodeId}/test`, { method:'POST' });
+  if (r) {
+    addLog(`${r.latency_ms !== null ? r.latency_ms+'ms' : 'Unreachable'} (${r.status})`,
+           r.status === 'online' ? 'ok' : 'error');
+    await refreshNodes();
+  }
+}
+async function testAllNodes() {
+  addLog('Testing all nodes...', 'info');
+  const r = await api('/api/nodes/test-all', { method:'POST' });
+  if (r) {
+    const vals = Object.values(r).filter(v=>v!==null);
+    addLog(`${vals.length}/${Object.keys(r).length} nodes reachable`, 'ok');
+    await refreshNodes();
+  }
+}
+
+// ── Engine ───────────────────────────────────────────────────
+async function refreshEngineStatus() {
+  const r = await api('/api/engine/status');
+  if (r) {
+    const badge = document.getElementById('engine-badge');
+    if (r.running) { badge.textContent = 'Running'; badge.className = 'engine-badge running'; }
+    else { badge.textContent = 'Stopped'; badge.className = 'engine-badge stopped'; }
+  }
+}
+async function startEngine() {
+  addLog('Starting engine...', 'info');
+  const r = await api('/api/engine/start', { method:'POST' });
+  addLog(r?.message || 'Unknown', r?.ok ? 'ok' : 'error');
+  refreshEngineStatus();
+}
+async function stopEngine() {
+  addLog('Stopping engine...', 'info');
+  const r = await api('/api/engine/stop', { method:'POST' });
+  addLog(r?.message || 'Unknown', r?.ok ? 'ok' : 'error');
+  refreshEngineStatus();
+}
+async function exportConfig() {
+  const r = await api('/api/config/export');
+  if (r) {
+    const blob = new Blob([JSON.stringify(r, null, 2)], {type:'application/json'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'sing-box-config.json'; a.click();
+    addLog('Config exported', 'ok');
+  }
+}
+
+// ── Routing ──────────────────────────────────────────────────
+async function showRoutingModal() {
+  const r = await api('/api/routing');
+  if (r) {
+    document.getElementById('r-private-mode').value = r.private_ip_mode;
+    document.getElementById('r-public-mode').value = r.public_ip_mode;
+    updateRoutingNodeOptions();
+    document.getElementById('r-private-node').value = r.private_ip_node_id || '';
+    document.getElementById('r-public-node').value = r.public_ip_node_id || '';
+  }
+  document.getElementById('routing-modal').classList.add('active');
+}
+function hideRoutingModal() { document.getElementById('routing-modal').classList.remove('active'); }
+
+function updateRoutingNodeOptions() {
+  const opts = nodes.map(n => `<option value="${n.id}">${esc(n.name || n.host)}</option>`).join('');
+  document.getElementById('r-private-node').innerHTML = `<option value="">-- None --</option>` + opts;
+  document.getElementById('r-public-node').innerHTML = `<option value="">-- None --</option>` + opts;
+}
+
+async function doSaveRouting() {
+  await api('/api/routing', { method:'PUT', body: JSON.stringify({
+    private_ip_mode: document.getElementById('r-private-mode').value,
+    private_ip_node_id: document.getElementById('r-private-node').value || null,
+    public_ip_mode: document.getElementById('r-public-mode').value,
+    public_ip_node_id: document.getElementById('r-public-node').value || null,
+  })});
+  hideRoutingModal();
+  addLog('Routing configuration saved', 'ok');
+}
+
+// ── Log viewer ────────────────────────────────────────────────
+function addLog(msg, cls = 'info') {
+  const box = document.getElementById('log-box');
+  const div = document.createElement('div');
+  div.className = `line ${cls}`;
+  div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  // Keep max 500 lines
+  while (box.children.length > 500) box.firstChild.remove();
+}
+
+function clearLogs() {
+  const box = document.getElementById('log-box');
+  box.innerHTML = '<div class="line info">Logs cleared.</div>';
+}
+
+// ── SSE log stream ────────────────────────────────────────────
+function connectLogStream() {
+  const es = new EventSource('/api/engine/logs/stream');
+  es.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+    if (d.text) {
+      let cls = 'info';
+      if (d.text.includes('[ERROR]') || d.text.includes('error')) cls = 'error';
+      else if (d.text.includes('[WARN]') || d.text.includes('warn')) cls = 'warn';
+      addLog(d.text, cls);
+    }
+  };
+  es.onerror = () => { /* reconnect automatically */ };
+}
+connectLogStream();
+
+// ── Helpers ──────────────────────────────────────────────────
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── Init ─────────────────────────────────────────────────────
+refreshNodes();
+refreshEngineStatus();
+setInterval(refreshEngineStatus, 5000);
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  switch(e.key) {
+    case 'i': showImportModal(); break;
+    case 'e': editSelectedNode(); break;
+    case 'd': deleteSelectedNode(); break;
+    case 't': testSelectedNode(); break;
+    case 'T': testAllNodes(); break;
+    case 'r': showRoutingModal(); break;
+    case 's': startEngine(); break;
+    case 'x': stopEngine(); break;
+    case 'Escape': hideImportModal(); hideEditModal(); hideRoutingModal(); break;
+  }
+});
+</script>
+</body>
+</html>
